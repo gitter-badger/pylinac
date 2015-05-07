@@ -245,8 +245,8 @@ Finally, let's take a look at that gamma map::
 
 .. [#leadlag] The beam isn't on during the gantry movement, so it's not as interesting as it could be, but it's still noteworthy.
 
-Converting Trajectory logs
---------------------------
+Converting Trajectory logs to CSV
+---------------------------------
 
 If you already have the log files, you obviously have a record of treatment. However, trajectory logs are in binary
 format and are not easily readable without tools like pylinac. You can save trajectory logs in a more readable format
@@ -271,7 +271,7 @@ Let's assume all of your logs for the past week are in a folder. You'd like to q
     >>> logs.avg_gamma(resolution=0.2)
     0.03  # or whatever
 
-You can also append to :class:`~pylinac.log_analyzer.MachineLogs` to have two or more different folders combined::
+Because :class:`~pylinac.log_analyzer.MachineLogs` inherits from list, you can append logs to have two or more different folders combined::
 
     >>> other_log_dir = r"C:\different\path"
     >>> logs.append(other_log_dir)
