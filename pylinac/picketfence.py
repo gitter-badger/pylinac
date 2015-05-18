@@ -7,7 +7,6 @@ import numpy as np
 import scipy.ndimage.filters as spfilt
 from scipy import signal
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 
 from pylinac.core.decorators import lazyproperty
 from pylinac.core.geometry import Line, Rectangle
@@ -300,7 +299,8 @@ class PicketFence:
             Do/don't plot the alpha overlay of the leaf status.
         """
         # plot the image
-        ax = plt.imshow(self.image.array, cmap=cm.Greys_r)
+        plt.clf()
+        ax = plt.imshow(self.image.array, cmap=plt.cm.Greys)
 
         # plot guard rails and mlc peaks as desired
         for p_num, picket in enumerate(self.pickets):

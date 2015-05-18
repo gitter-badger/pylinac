@@ -407,14 +407,15 @@ class Starshot:
         show : bool
             Whether to actually show the image.
         """
-        imgplot = plt.imshow(self.image.array)
+        plt.clf()
+        imgplot = plt.imshow(self.image.array, cmap=plt.cm.Greys)
 
         # plot radiation lines
         for line in self.lines:
-            line.add_to_axes(imgplot.axes)
+            line.add_to_axes(imgplot.axes, color='blue')
 
         # plot wobble circle
-        self.wobble.add_to_axes(imgplot.axes)
+        self.wobble.add_to_axes(imgplot.axes, edgecolor='green')
 
         # plot profile circle
         self.circle_profile.add_to_axes(imgplot.axes, edgecolor='green')
@@ -558,8 +559,8 @@ if __name__ == '__main__':
     pass
     # Starshot().run_demo()
     star = Starshot()
-    star.load_image_UI()
-    # star.load_demo_image()
+    # star.load_image_UI()
+    star.load_demo_image()
     star.analyze(radius=0.95, min_peak_height=0.25, fwhm=True)
     # star.analyze(recursive=True)
     # print(star.return_results())
