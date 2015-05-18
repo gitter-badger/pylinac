@@ -13,13 +13,13 @@ setup(
     version=__version__,
     packages=find_packages(),
     # include_package_data=True,
-    package_data={'pylinac' :
-                      ['demo_files/cbct/*',
-                       'demo_files/log_reader/*',
-                       'demo_files/starshot/*',
-                       'demo_files/picket_fence/*',
-                       'demo_files/vmat/*',
-                       'demo_files/flatsym/*']}, # http://stackoverflow.com/questions/7522250/how-to-include-package-data-with-setuptools-distribute
+    # package_data={'pylinac' :
+    #                   ['demo_files/cbct/*',
+    #                    'demo_files/log_reader/*',
+    #                    'demo_files/starshot/*',
+    #                    'demo_files/picket_fence/*',
+    #                    'demo_files/vmat/*',
+    #                    'demo_files/flatsym/*']}, # http://stackoverflow.com/questions/7522250/how-to-include-package-data-with-setuptools-distribute
     zip_safe=False,  # allows users to view files in egg/distribution
     url='https://github.com/jrkerns/pylinac',
     keywords='medical physics AAPM TG142 quality assurance starshot cbct vmat dynalog trajectory log',
