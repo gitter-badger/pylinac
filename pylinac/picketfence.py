@@ -6,6 +6,8 @@ import os.path as osp
 import numpy as np
 import scipy.ndimage.filters as spfilt
 from scipy import signal
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from pylinac.core.decorators import lazyproperty
