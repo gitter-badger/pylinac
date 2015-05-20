@@ -1419,6 +1419,7 @@ class MLC:
         """Plot an MLC error histogram."""
         plt.clf()
         plt.hist(self._abs_error_all_leaves.flatten())
+        plt.autoscale(tight=True)
         if show:
             plt.show()
 
@@ -1431,6 +1432,7 @@ class MLC:
         """Plot RMSs by leaf."""
         plt.clf()
         plt.bar(np.arange(len(self.get_RMS('both')))[::-1], self.get_RMS('both'), align='center')
+        plt.autoscale(tight=True)
         if show:
             plt.show()
 
