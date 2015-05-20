@@ -257,6 +257,7 @@ class MachineLog:
 
     If reading Trajectory logs, the .txt file is also loaded if it's around.
     """
+
     def __init__(self, filename=''):
         """
         Parameters
@@ -433,7 +434,7 @@ class MachineLog:
         print("Gamma pass %: {:2.2f}".format(self.fluence.gamma.pass_prcnt))
         print("Gamma average: {:2.3f}".format(self.fluence.gamma.avg_gamma))
 
-    @property
+    @lazyproperty
     def log_type(self):
         """Determine the MLC log type: Trajectory or Dynalog.
 
@@ -1937,7 +1938,10 @@ class CRC(TLog_Section):
 
 def is_tlog_txt_file_around(tlog_filename):
     """Boolean specifying if a Tlog *.txt file is available."""
-    txt_filename = tlog_filename.replace('.bin', '.txt')
+    try:
+        txt_filename = tlog_filename.replace('.bin', '.txt')
+    except:
+        return False
     if osp.isfile(txt_filename):
         return True
     else:
@@ -1954,19 +1958,19 @@ def is_log(filename):
 def is_tlog(filename):
     """Boolean specifying if filename is a Trajectory log file."""
     if is_valid_file(filename, raise_error=False):
-        with open_file(filename) as unknown_file:
-            header_sample = unknown_file.read(5).decode()
-            if 'V' in header_sample:
-                return True
-            else:
-                return False
+        unknown_file = open_file(filename)
+        header_sample = unknown_file.read(5).decode()
+        if 'V' in header_sample:
+            return True
+        else:
+            return False
     else:
         return False
 
 def is_dlog(filename):
     """Boolean specifying if filename is a dynalog file."""
     if is_valid_file(filename, raise_error=False):
-        with open_file(filename) as unknown_file:
+        with open(filename, 'rb') as unknown_file:
             header_sample = unknown_file.read(5).decode()
             if 'B' in header_sample or 'A' in header_sample:
                 return True
@@ -2033,3 +2037,10 @@ def write_array(writer, description, value, unit=None):
             dtype_desc = description + dtype + ' in units of ' + unit
         arr2write = np.insert(getattr(value, attr).astype(object), 0, dtype_desc)
         writer.writerow(arr2write)
+
+
+if __name__ == '__main__':
+    filestr = os.path.join(os.path.dirname(__file__), 'demo_files', 'log_reader', 'Tlog.bin')
+    ofile = open_file(filestr)
+    log = MachineLog(ofile)
+    ttt = 1

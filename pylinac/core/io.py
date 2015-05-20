@@ -23,6 +23,9 @@ def is_valid_file(file_path, raise_error=True):
     """
     try:
         file_path.seek(0)
+        return True
+    except ValueError:
+        return True
     except AttributeError:
         if osp.isfile(file_path):
             return True
@@ -30,6 +33,21 @@ def is_valid_file(file_path, raise_error=True):
             return False
         else:
             raise FileExistsError("{} is not a valid file".format(file_path))
+
+def open_file(file, mode='rb'):
+    """Open a file if a file is a string, or open the object if file is a file object."""
+    if isinstance(file, str):
+        openfile = open(file, mode)
+    else:
+        try:
+            file.open()
+        except ValueError:
+            file.seek(0)
+            openfile = file
+        except AttributeError:
+            file.seek(0)
+            openfile = file
+    return openfile
 
 def is_valid_dir(dir_path, raise_error=True):
     """Check if path points to a valid directory."""
@@ -39,15 +57,6 @@ def is_valid_dir(dir_path, raise_error=True):
         return False
     else:
         raise NotADirectoryError("{} does not point to a valid directory".format(dir_path))
-
-def open_file(file):
-    """Open a file if a file is a string, or open the object if file is a file object."""
-    try:
-        openfile = file.open()
-    except AttributeError:
-        openfile = open(file, 'rb')
-
-    return openfile
 
 def get_filepath_UI(dir=None, caption='', filters=''):
     """Display a UI dialog box to select a file.
