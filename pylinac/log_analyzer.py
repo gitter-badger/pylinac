@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 
 from pylinac import MEMORY_PROFILE, DEBUG
 from pylinac.core.decorators import type_accept, lazyproperty, value_accept
-from pylinac.core.io import is_valid_file, is_valid_dir, get_folder_UI, get_filepath_UI
+from pylinac.core.io import is_valid_file, is_valid_dir, get_folder_UI, get_filepath_UI, open_file
 from pylinac.core.utilities import is_iterable
 
 
@@ -257,7 +257,6 @@ class MachineLog:
 
     If reading Trajectory logs, the .txt file is also loaded if it's around.
     """
-    @type_accept(filename=str)
     def __init__(self, filename=''):
         """
         Parameters
@@ -338,7 +337,6 @@ class MachineLog:
         if filename: # if user didn't hit cancel...
             self.load(filename, exclude_beam_off)
 
-    @type_accept(filename=str)
     def load(self, filename, exclude_beam_off=True):
         """Load the log file directly by passing the path to the file.
 
@@ -544,7 +542,7 @@ class MachineLog:
             self._read_txt_file()
 
         # read in trajectory log binary data
-        fcontent = open(self._filename, 'rb').read()
+        fcontent = open_file(self._filename).read()
 
         # Unpack the content according to respective section and data type (see log specification file).
         self.header, self._cursor = Tlog_Header(fcontent, self._cursor)._read()
@@ -1956,7 +1954,7 @@ def is_log(filename):
 def is_tlog(filename):
     """Boolean specifying if filename is a Trajectory log file."""
     if is_valid_file(filename, raise_error=False):
-        with open(filename, 'rb') as unknown_file:
+        with open_file(filename) as unknown_file:
             header_sample = unknown_file.read(5).decode()
             if 'V' in header_sample:
                 return True
@@ -1968,7 +1966,7 @@ def is_tlog(filename):
 def is_dlog(filename):
     """Boolean specifying if filename is a dynalog file."""
     if is_valid_file(filename, raise_error=False):
-        with open(filename, 'rb') as unknown_file:
+        with open_file(filename) as unknown_file:
             header_sample = unknown_file.read(5).decode()
             if 'B' in header_sample or 'A' in header_sample:
                 return True
