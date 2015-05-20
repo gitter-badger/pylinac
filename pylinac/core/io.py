@@ -41,6 +41,7 @@ def open_file(file, mode='rb'):
     else:
         try:
             file.open()
+            openfile = file
         except ValueError:
             file.seek(0)
             openfile = file
