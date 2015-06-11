@@ -13,12 +13,13 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from scipy.optimize import differential_evolution
 
 from pylinac.core.decorators import value_accept
 from pylinac.core.geometry import Point, Line, Circle
 from pylinac.core.image import Image
 from pylinac.core.io import get_filepath_UI, get_filenames_UI
-from pylinac.core.profile import CircleProfile, SingleProfile
+from pylinac.core.profile import SingleProfile, CollapsedCircleProfile
 
 
 class Starshot:
@@ -27,10 +28,10 @@ class Starshot:
 
     Attributes
     ----------
-    image : core.image.Image
-    circle_profile : StarProfile
-    lines : list of Line instances
-    wobble : Wobble
+    image : :class:`~pylinac.core.image.Image`
+    circle_profile : :class:`~pylinac.starshot.StarProfile`
+    lines : list of :class:`~pylinac.core.geometry.Line` instances
+    wobble : :class:`~pylinac.starshot.Wobble`
 
     Examples
     --------
@@ -38,21 +39,30 @@ class Starshot:
         >>> Starshot().run_demo()
 
     Typical session:
-        >>> img_path = r"C:/QA/Starshots/Coll"
-        >>> mystar = Starshot()
-        >>> mystar.load_image(img_path)
+        >>> img_path = r"C:/QA/Starshots/Coll.jpeg"
+        >>> mystar = Starshot(img_path)
         >>> mystar.analyze()
         >>> print(mystar.return_results())
         >>> mystar.plot_analyzed_image()
     """
-    def __init__(self):
+    def __init__(self, filepath=None):
         # self.image = Image  # The image array and image property structure
         self.circle_profile = StarProfile()  # a circular profile which will detect radiation line locations
         self.lines = []  # a list which will hold Line instances representing radiation lines.
         self.wobble = Wobble()  # A Circle representing the radiation wobble
-        self._tolerance = 1  # tolerance limit of the radiation wobble
-        self._tolerance_unit = 'pixels'  # tolerance units are initially pixels. Will be converted to 'mm' if conversion
-        # information available in image properties
+        self.tolerance = Tolerance(1, 'pixels')
+        if filepath is not None:
+            self.load_image(filepath)
+
+    @classmethod
+    def from_demo_image(cls):
+        """Construct a Starshot instance and load the demo image.
+
+        .. versionadded:: 0.6
+        """
+        obj = cls()
+        obj.load_demo_image()
+        return obj
 
     def load_demo_image(self):
         """Load the starshot demo image.
@@ -85,6 +95,16 @@ class Starshot:
         if self.image.shape[0] > 1100:
             self.image.median_filter(0.002)
 
+    @classmethod
+    def from_multiple_images(cls, filepath_list):
+        """Construct a Starshot instance and load in and combine multiple images.
+
+        .. versionadded:: 0.6
+        """
+        obj = cls()
+        obj.load_multiple_images(filepath_list)
+        return obj
+
     def load_multiple_images(self, filepath_list):
         """Load multiple images via the file path.
 
@@ -95,7 +115,17 @@ class Starshot:
         filepath_list : sequence
             An iterable sequence of filepath locations.
         """
-        self.image = Image.combine_multiples(filepath_list)
+        self.image = Image.from_multiples(filepath_list)
+
+    @classmethod
+    def from_multiple_images_UI(cls):
+        """Construct a Starshot instance and load in and combine multiple images via a UI dialog box.
+
+        .. versionadded:: 0.6
+        """
+        obj = cls()
+        obj.load_multiple_images_UI()
+        return obj
 
     def load_multiple_images_UI(self):
         """Load multiple images via a dialog box.
@@ -105,6 +135,16 @@ class Starshot:
         path_list = get_filenames_UI()
         if path_list:
             self.load_multiple_images(path_list)
+
+    @classmethod
+    def from_image_UI(cls):
+        """Construct a Starshot instance and get the image via a UI dialog box.
+
+        .. versionadded:: 0.6
+        """
+        obj = cls()
+        obj.load_image_UI()
+        return obj
 
     def load_image_UI(self):
         """Load the image by using a UI dialog box."""
@@ -185,7 +225,7 @@ class Starshot:
         self.circle_profile.center = center_point
 
     @value_accept(radius=(0.2, 0.95), min_peak_height=(0.1, 0.9), SID=(40, 400))
-    def analyze(self, radius=0.95, min_peak_height=0.25, SID=100, fwhm=True, recursive=True):
+    def analyze(self, radius=0.85, min_peak_height=0.25, SID=100, fwhm=True, recursive=True):
         """Analyze the starshot image.
 
         Analyze finds the minimum radius and center of a circle that touches all the lines
@@ -209,7 +249,7 @@ class Starshot:
                 value will always be used if it can be found, otherwise the passed value will be used.
 
         fwhm : bool
-            If True (defualt), the center of the FWHM of the spokes will be determined.
+            If True (default), the center of the FWHM of the spokes will be determined.
             If False, the peak value location is used as the spoke center.
             .. note:: In practice, this ends up being a very small difference. Set to false if behavior is unexpected.
         recursive : bool
@@ -232,7 +272,7 @@ class Starshot:
         self._check_image_inversion()
 
         # set starting point automatically if not yet set
-        if not self.start_point_is_set:
+        if not self._start_point_is_set:
             self._auto_set_start_point()
 
         wobble_unreasonable = True
@@ -244,12 +284,14 @@ class Starshot:
             self.circle_profile.get_median_profile(self.image.array)
             # find the radiation lines using the peaks of the profile
             self.lines = self.circle_profile.find_rad_lines(min_peak_height, fwhm=fwhm)
+
+            self.find_wobble_minimize(SID)
             # find the wobble
-            self._find_wobble_2step(SID)
+            # self._find_wobble_2step(SID)
             if not recursive:
                 wobble_unreasonable = False
             else:
-                if self.wobble.radius_mm < 5 and self.wobble.center.dist_to(self.start_point) < 30:
+                if self.wobble.radius_mm < 5 and self.wobble.center.dist_to(self.start_point) < 50:
                     wobble_unreasonable = False
                 else:
                     if min_peak_height > 0.15:
@@ -283,7 +325,7 @@ class Starshot:
             return False
 
     @property
-    def start_point_is_set(self):
+    def _start_point_is_set(self):
         """Boolean specifying if a start point has been set."""
         if self.circle_profile.center.x == 0:
             return False
@@ -312,6 +354,19 @@ class Starshot:
         else:
             self.wobble.radius /= SID / 100
             self.wobble.radius_mm /= SID / 100
+
+    def find_wobble_minimize(self, SID):
+        sp = copy.copy(self.circle_profile.center)
+
+        def f(p, lines):
+            return max(line.distance_to(Point(p[0], p[1])) for line in lines)
+
+        res = differential_evolution(f, bounds=[(sp.x*0.9, sp.x*1.1), (sp.y*0.9, sp.y*1.1)], args=(self.lines,))
+
+        self.wobble.radius = res.fun
+        self.wobble.center = Point(res.x[0], res.x[1])
+
+        self._scale_wobble(SID)
 
     def _find_wobble_2step(self, SID):
         """Find the smallest radius ("wobble") and center of a circle that touches all the star lines.
@@ -375,7 +430,7 @@ class Starshot:
     @property
     def passed(self):
         """Boolean specifying whether the determined wobble was within tolerance."""
-        if self.wobble.radius_mm * 2 < self._tolerance:
+        if self.wobble.radius_mm * 2 < self.tolerance.value:
             return True
         else:
             return False
@@ -399,13 +454,11 @@ class Starshot:
                                                                             self.wobble.center.x, self.wobble.center.y)
         return string
 
-    def plot_analyzed_image(self, plot=None, show=True):
+    def plot_analyzed_image(self, show=True):
         """Draw the star lines, profile circle, and wobble circle on a matplotlib figure.
 
         Parameters
         ----------
-        plot : matplotlib.image.AxesImage, optional
-            The plot to draw on. If None, will create a new one.
         show : bool
             Whether to actually show the image.
         """
@@ -471,7 +524,7 @@ class Wobble(Circle):
         return self.radius_mm*2
 
 
-class StarProfile(CircleProfile):
+class StarProfile(CollapsedCircleProfile):
     """Class that holds and analyzes the circular profile which finds the radiation lines."""
     def __init__(self, center=None, radius=None):
         super().__init__(center=center, radius=radius)
@@ -484,17 +537,7 @@ class StarProfile(CircleProfile):
         core.profile.CircleProfile.get_profile : Further parameter info
         """
         prof_size = 4*self.radius*np.pi
-        super().get_profile(image_array, prof_size)
-
-        mean_prof = np.zeros(prof_size)
-        rrange = np.linspace(start=0.9, stop=1, num=int(self.radius*0.1))
-        for rad in rrange[::-1]:
-            prof = CircleProfile(self.center, self.radius*rad)
-            prof.get_profile(image_array, prof_size)
-            mean_prof += prof.y_values
-        mean_prof /= len(rrange)
-
-        self.y_values = mean_prof
+        super().get_profile(image_array, size=prof_size)
         self._roll_prof_to_midvalley()
         self.ground()
 
@@ -502,10 +545,6 @@ class StarProfile(CircleProfile):
         """Roll the circle profile so that its edges are not near a radiation line.
             This is a prerequisite for properly finding star lines.
         """
-        # vals, indx = self.find_peaks(return_it=True)
-        # dindx = np.diff(indx)
-        # roll_amount = int(indx[0] - np.median(dindx)/2)
-        # Find index of the min value(s)
         roll_amount = np.where(self.y_values == self.y_values.min())[0][0]
         # Roll the profile and x and y coordinates
         self.y_values = np.roll(self.y_values, -roll_amount)
@@ -554,17 +593,25 @@ class StarProfile(CircleProfile):
         line_list = [Line(self.peaks[line], self.peaks[line+offset]) for line in range(num_rad_lines)]
         return line_list
 
+
+class Tolerance:
+    """A class for holding tolerance information."""
+
+    def __init__(self, value=None, unit=None):
+        self.value = value
+        self.unit = unit
+
 # ----------------------------
 # Starshot demo
 # ----------------------------
 if __name__ == '__main__':
     pass
     # Starshot().run_demo()
-    star = Starshot()
+    star = Starshot.from_demo_image()
     # star.load_image_UI()
-    star.load_demo_image()
+    # star.load_demo_image()
     star.analyze(radius=0.95, min_peak_height=0.25, fwhm=True)
     # star.analyze(recursive=True)
-    # print(star.return_results())
+    print(star.return_results())
     star.plot_analyzed_image()
     # star.save_analyzed_image('tester.png', bbox_inches='tight', pad_inches=0)

@@ -2,6 +2,7 @@
 """The picketfence module is used for loading and analyzing EPID images of a "picket fence", a common MLC
 pattern produced when performing linac QA."""
 import os.path as osp
+from functools import lru_cache
 
 import numpy as np
 import scipy.ndimage.filters as spfilt
@@ -10,7 +11,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from pylinac.core.decorators import lazyproperty
 from pylinac.core.geometry import Line, Rectangle
 from pylinac.core.io import get_filepath_UI
 from pylinac.core.profile import Profile
@@ -38,15 +38,16 @@ class PicketFence:
 
     Typical session:
         >>> img_path = r"C:/QA/June/PF.dcm"  # the EPID image
-        >>> mypf = PicketFence()
-        >>> mypf.load_image(img_path)
+        >>> mypf = PicketFence(img_path)
         >>> mypf.analyze(tolerance=0.5, action_tolerance=0.3)
         >>> print(mypf.return_results())
         >>> mypf.plot_analyzed_image()
     """
-    def __init__(self):
+    def __init__(self, filename=None, filter=None):
         self.pickets = []
         self._action_lvl = None
+        if filename is not None:
+            self.load_image(filename, filter)
 
     def _clear_attrs(self):
         """Clear attributes; necessary when new image loaded or analysis done on same image."""
@@ -119,6 +120,16 @@ class PicketFence:
         """Return the number of pickets determined."""
         return len(self.pickets)
 
+    @classmethod
+    def from_demo_image(cls):
+        """Construct a PicketFence instance using the demo image.
+
+        .. versionadded:: 0.6
+        """
+        obj = cls()
+        obj.load_demo_image()
+        return obj
+
     def load_demo_image(self):
         """Load the demo image that is included with pylinac."""
         im_open_path = osp.join(osp.dirname(__file__), 'demo_files', 'picket_fence', 'EPID-PF-LR.dcm')
@@ -139,6 +150,16 @@ class PicketFence:
         if isinstance(filter, int):
             self.image.array = spfilt.median_filter(self.image.array, size=filter)
         self._clear_attrs()
+
+    @classmethod
+    def from_image_UI(cls):
+        """Construct a PicketFence instance and load an image using a dialog box.
+
+        .. versionadded:: 0.6
+        """
+        obj = cls()
+        obj.load_image_UI()
+        return obj
 
     def load_image_UI(self):
         """Load the image using a UI dialog box."""
@@ -176,15 +197,15 @@ class PicketFence:
         """Pre-analysis"""
         self._clear_attrs()
         self._action_lvl = action_tolerance
-        self._check_inversion()
+        self.image.check_inversion()
         self._threshold()
         self._find_orientation()
 
         """Analysis"""
         self._construct_pickets(tolerance, action_tolerance)
         leaf_centers = self._find_leaf_centers(hdmlc)
-        self.calc_mlc_positions(leaf_centers)
-        self.calc_mlc_error()
+        self._calc_mlc_positions(leaf_centers)
+        self._calc_mlc_error()
 
     def _construct_pickets(self, tolerance, action_tolerance):
         """Construct the Picket instances."""
@@ -262,7 +283,7 @@ class PicketFence:
             leaf_center_idxs = np.array(peak_idxs[:-1]) + peak_diff / 2
         return leaf_center_idxs
 
-    def calc_mlc_positions(self, leaf_centers):
+    def _calc_mlc_positions(self, leaf_centers):
         """Calculate the positions of all the MLC pairs."""
         diff = np.diff(leaf_centers)
         sample_width = np.round(np.median(diff*2/5)/2).astype(int)
@@ -282,7 +303,7 @@ class PicketFence:
                     meas = MLC_Meas((mlc_rows[0], peak.idx), (mlc_rows[-1], peak.idx))
                 self.pickets[idx].mlc_meas.append(meas)
 
-    def calc_mlc_error(self):
+    def _calc_mlc_error(self):
         """Calculate the error of the MLC positions relative to the picket fit."""
         for picket in self.pickets:
             picket.fit_poly()
@@ -357,7 +378,7 @@ class PicketFence:
         plt.savefig(filename, **kwargs)
 
     def return_results(self):
-        """Print results of analysis."""
+        """Return results of analysis. Use with print()."""
         pass_pct = self.percent_passing
         string = "Picket Fence Results: \n{:2.1f}% " \
                  "Passed\nMedian Error: {:2.3f}mm \n" \
@@ -365,20 +386,6 @@ class PicketFence:
                                                                                                    self.max_error_picket,
                                                                                                   self.max_error_leaf)
         return string
-
-    def _check_inversion(self):
-        """Check the image for inversion (pickets are valleys, not peaks) by sampling the 4 image corners.
-        If the average value of the four corners is above the average pixel value, then it is very likely inverted.
-        """
-        outer_edge = 10
-        inner_edge = 30
-        TL_corner = self.image.array[outer_edge:inner_edge, outer_edge:inner_edge]
-        BL_corner = self.image.array[-inner_edge:-outer_edge, -inner_edge:-outer_edge]
-        TR_corner = self.image.array[outer_edge:inner_edge, outer_edge:inner_edge]
-        BR_corner = self.image.array[-inner_edge:-outer_edge, -inner_edge:-outer_edge]
-        corner_avg = np.mean((TL_corner, BL_corner, TR_corner, BR_corner))
-        if corner_avg > np.mean(self.image.array.flatten()):
-            self.image.invert()
 
     def _threshold(self):
         """Threshold the image by subtracting the minimum value. Allows for more accurate image orientation determination.
@@ -393,16 +400,6 @@ class PicketFence:
         self._analysis_array = self.image.array.copy()
         self._analysis_array[self._analysis_array < min_val] = min_val
         self._analysis_array -= min_val
-
-    # @property
-    # def _analysis_array(self):
-    #     return getattr(self, '_aa', self.image.array.copy())
-    #
-    # @_analysis_array.setter
-    # def _analysis_array(self, array):
-    #     if array.shape != self.image.shape:
-    #         raise ValueError("Array size is not the same as the original image")
-    #     self._aa = array
 
     def _find_orientation(self):
         """Determine the orientation of the radiation strips by examining percentiles of the sum of each axes of the image.
@@ -454,7 +451,8 @@ class Picket:
         """The max error of the MLC measurements."""
         return self._error_array.max()
 
-    @lazyproperty
+    @property
+    @lru_cache
     def _error_array(self):
         err = []
         for meas in self.mlc_meas:
@@ -558,9 +556,9 @@ if __name__ == '__main__':
     # import cProfile
     # cProfile.run('PicketFence().run_demo()', sort=1)
     # PicketFence().run_demo()
-    pf = PicketFence()
+    pf = PicketFence.from_demo_image()
     # pf.open_UI()
-    pf.load_demo_image()
+    # pf.load_demo_image()
     # pf.image.rot90()
     # pf.image.array = rotate(pf.image.array, 0.5, reshape=False, mode='nearest')
     pf.analyze(tolerance=0.15, action_tolerance=0.03)
